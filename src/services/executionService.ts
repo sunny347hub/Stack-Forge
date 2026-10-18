@@ -78,7 +78,7 @@ function stripTypeScript(tsCode: string): string {
     // Remove type casts: `as Type`
     .replace(/\s+as\s+[A-Za-z0-9_<>[\]]+/g, '')
     // Remove return type annotations `: Type {` or `: void =>`
-    .replace(/:\s*[A-Za-z0-9_<>[\]|&]+\s*(?=\{|\=\>)/g, ' ')
+    .replace(/:\s*[A-Za-z0-9_<>[\]|&]+\s*(?=\{|=>)/g, ' ')
     // Remove variable/parameter type annotations `: string`, `: number[]`
     .replace(/:\s*[A-Za-z0-9_<>[\]|&]+/g, '');
 }

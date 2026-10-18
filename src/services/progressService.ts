@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { UserCourseProgress, LessonProgress, LearningActivityDay, Lesson } from '../types/database';
+import type { UserCourseProgress, LessonProgress, LearningActivityDay } from '../types/database';
 import { INITIAL_LESSONS } from '../lib/seedData';
 
 interface LocalProgressState {

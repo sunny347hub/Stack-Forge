@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { progressService } from '../services/progressService';
-import { Flame, CheckCircle2, BookOpen, Clock, User, Shield, LogOut } from 'lucide-react';
-import { ProgressBar } from '../components/ProgressBar';
+import { Flame, CheckCircle2, BookOpen, LogOut } from 'lucide-react';
 
 export const Profile: React.FC = () => {
   const { user, profile, signOut, isDemoMode } = useAuth();

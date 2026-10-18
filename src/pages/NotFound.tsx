@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Compass, ArrowRight } from 'lucide-react';
+import { Compass } from 'lucide-react';
 
 export const NotFound: React.FC = () => {
   return (

@@ -46,11 +46,7 @@ import {
   Copy,
   Sparkles,
   Trash2,
-  Database,
-  ZoomIn,
-  ZoomOut,
-  Send,
-  RefreshCw
+  Database
 } from 'lucide-react';
 
 export const LessonWorkspace: React.FC = () => {
@@ -247,17 +243,22 @@ export const LessonWorkspace: React.FC = () => {
     }
   };
 
+  const handleRunCodeRef = useRef(handleRunCode);
+  useEffect(() => {
+    handleRunCodeRef.current = handleRunCode;
+  });
+
   // Keyboard Shortcut: Ctrl+Enter / Cmd+Enter to Run Code
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        handleRunCode();
+        handleRunCodeRef.current();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [code, currentLesson]);
+  }, []);
 
   // Listen for iframe console bridge messages
   useEffect(() => {
@@ -311,7 +312,7 @@ export const LessonWorkspace: React.FC = () => {
       }).join('\n');
       setCode(formatted);
       handleCodeChange(formatted);
-    } catch (e) {
+    } catch {
       // ignore
     }
   };

@@ -564,7 +564,7 @@ console.log(counter()); // 2
   return {
     deposit: (amount) => {
       balance += amount;
-      return \`Deposited \$\${amount}. New balance: \$\${balance}\`;
+      return \`Deposited $\${amount}. New balance: $\${balance}\`;
     },
     getBalance: () => balance
   };
@@ -579,7 +579,7 @@ console.log("Verified Balance:", account.getBalance());`,
   return {
     deposit: (amount) => {
       balance += amount;
-      return \`Deposited \$\${amount}. New balance: \$\${balance}\`;
+      return \`Deposited $\${amount}. New balance: $\${balance}\`;
     },
     getBalance: () => balance
   };
@@ -705,7 +705,7 @@ const available = products.filter(p => p.inStock);
 console.log("In stock count:", available.length);
 
 // 2. Map to formatted price tags
-const priceTags = available.map(p => \`\${p.name}: \$\${p.price}\`);
+const priceTags = available.map(p => \`\${p.name}: $\${p.price}\`);
 console.log("Price Tags:", priceTags);`,
     solution_code: `const products = [
   { name: "Laptop", price: 999, inStock: true },
@@ -719,7 +719,7 @@ const available = products.filter(p => p.inStock);
 console.log("In stock count:", available.length);
 
 // 2. Map to formatted price tags
-const priceTags = available.map(p => \`\${p.name}: \$\${p.price}\`);
+const priceTags = available.map(p => \`\${p.name}: $\${p.price}\`);
 console.log("Price Tags:", priceTags);
 
 // 3. Total inventory value

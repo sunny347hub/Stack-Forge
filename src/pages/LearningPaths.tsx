@@ -3,17 +3,14 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { courseService } from '../services/courseService';
 import { progressService } from '../services/progressService';
-import { Course, LearningPath, UserCourseProgress } from '../types/database';
-import { TechIcon } from '../components/TechIcon';
+import { LearningPath, UserCourseProgress } from '../types/database';
 import { Badge } from '../components/Badge';
 import { ProgressBar } from '../components/ProgressBar';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { 
-  Layers, 
   CheckCircle2, 
   ArrowRight, 
   Clock, 
-  PlayCircle,
   Sparkles
 } from 'lucide-react';
 
@@ -85,7 +82,7 @@ export const LearningPaths: React.FC = () => {
 
       {/* 12 Stages Vertical Timeline */}
       <div className="space-y-4">
-        {steps.map((step, idx) => {
+        {steps.map((step) => {
           const course = step.course;
           const userProgress = course ? courseProgressMap[course.id] : null;
           const isCompleted = userProgress?.status === 'completed';
