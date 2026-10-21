@@ -15,18 +15,18 @@ export const Home: React.FC = () => {
   const { user } = useAuth();
 
   const journeySteps = [
-    { title: 'HTML', category: 'Markup' },
-    { title: 'CSS', category: 'Styling' },
-    { title: 'JavaScript', category: 'Logic' },
-    { title: 'Git', category: 'VCS' },
-    { title: 'npm', category: 'Packages' },
-    { title: 'TypeScript', category: 'Types' },
-    { title: 'React', category: 'UI' },
-    { title: 'Node.js', category: 'Runtime' },
-    { title: 'Express.js', category: 'APIs' },
-    { title: 'SQL', category: 'Queries' },
-    { title: 'PostgreSQL', category: 'RDBMS' },
-    { title: 'MySQL', category: 'Database' },
+    { title: 'HTML', category: 'Markup', slug: 'html-fundamentals' },
+    { title: 'CSS', category: 'Styling', slug: 'css-fundamentals' },
+    { title: 'JavaScript', category: 'Logic', slug: 'javascript-fundamentals' },
+    { title: 'Git', category: 'VCS', slug: 'git-fundamentals' },
+    { title: 'npm', category: 'Packages', slug: 'npm-fundamentals' },
+    { title: 'TypeScript', category: 'Types', slug: 'typescript-fundamentals' },
+    { title: 'React', category: 'UI', slug: 'react-fundamentals' },
+    { title: 'Node.js', category: 'Runtime', slug: 'nodejs-fundamentals' },
+    { title: 'Express.js', category: 'APIs', slug: 'express-fundamentals' },
+    { title: 'SQL', category: 'Queries', slug: 'sql-fundamentals' },
+    { title: 'PostgreSQL', category: 'RDBMS', slug: 'postgresql-fundamentals' },
+    { title: 'MySQL', category: 'Database', slug: 'mysql-fundamentals' },
   ];
 
   const features = [
@@ -214,8 +214,9 @@ export const Home: React.FC = () => {
           {/* Interactive Pipeline Carousel/Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {journeySteps.map((step, index) => (
-              <div
+              <Link
                 key={step.title}
+                to={`/courses/${step.slug}`}
                 className="relative group p-4 rounded-xl bg-dark-card border border-dark-border hover:border-forge-500/50 hover:bg-slate-800/60 transition-all flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -229,7 +230,7 @@ export const Home: React.FC = () => {
                 <div className="text-sm font-bold text-white group-hover:text-forge-300 transition-colors">
                   {step.title}
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 

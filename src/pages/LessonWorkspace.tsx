@@ -109,7 +109,20 @@ export const LessonWorkspace: React.FC = () => {
           setModules(result.modules);
 
           const allLessons = result.modules.flatMap(m => m.lessons || []);
-          const lesson = allLessons.find(l => l.slug === lessonSlug) || null;
+          const cleanLessonSlug = decodeURIComponent(lessonSlug).trim().toLowerCase();
+          const normLessonSlug = cleanLessonSlug.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+          const lesson = allLessons.find(l => {
+            const lSlug = l.slug.toLowerCase();
+            const lNorm = lSlug.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+            return (
+              lSlug === cleanLessonSlug ||
+              lSlug === normLessonSlug ||
+              lNorm === normLessonSlug ||
+              l.title.toLowerCase() === cleanLessonSlug
+            );
+          }) || allLessons[0] || null;
+
           setCurrentLesson(lesson);
 
           if (user) {

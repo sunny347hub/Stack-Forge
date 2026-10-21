@@ -39,6 +39,10 @@ export const CourseDetail: React.FC = () => {
           setCourse(result.course);
           setModules(result.modules);
           setPrerequisites(result.prerequisites);
+        } else {
+          setCourse(null);
+          setModules([]);
+          setPrerequisites([]);
         }
 
         if (user) {
