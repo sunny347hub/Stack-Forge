@@ -54,10 +54,15 @@ export const LearnDashboard: React.FC = () => {
           setLessonProgressMap(lProgress || {});
           setStreak(streakCount || 0);
         } else {
-          // Unauthenticated or state reset
-          setCourseProgressMap({});
-          setLessonProgressMap({});
-          setStreak(0);
+          // Unauthenticated: show any guest progress
+          const [cProgress, lProgress, streakCount] = await Promise.all([
+            progressService.getAllUserCourseProgress('guest_user'),
+            progressService.getAllUserLessonProgress('guest_user'),
+            progressService.getStreakCount('guest_user')
+          ]);
+          setCourseProgressMap(cProgress || {});
+          setLessonProgressMap(lProgress || {});
+          setStreak(streakCount || 0);
         }
       } catch (err) {
         console.error('Failed to load dashboard data:', err);

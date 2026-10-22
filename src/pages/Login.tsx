@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ArrowRight, Lock, Mail, AlertCircle } from 'lucide-react';
+import { ArrowRight, Lock, Mail, AlertCircle, Sparkles } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 
 export const Login: React.FC = () => {
-  const { signIn } = useAuth();
+  const { signIn, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/learn';
@@ -39,9 +39,19 @@ export const Login: React.FC = () => {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setLoading(true);
+    try {
+      await loginAsDemo();
+      navigate(redirectTo, { replace: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-dark-card border border-dark-border p-8 rounded-2xl shadow-2xl">
+      <div className="max-w-md w-full space-y-6 bg-dark-card border border-dark-border p-8 rounded-2xl shadow-2xl">
         
         <div className="text-center">
           <Link to="/" className="inline-flex items-center gap-2 mb-4">
@@ -69,7 +79,7 @@ export const Login: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
               Email Address
@@ -125,6 +135,25 @@ export const Login: React.FC = () => {
             )}
           </button>
         </form>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-dark-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-dark-card px-2 text-slate-500 font-semibold">Or instant access</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDemoLogin}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-slate-200 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 hover:border-forge-500/50 transition-all text-sm"
+        >
+          <Sparkles className="w-4 h-4 text-forge-400" />
+          <span>Continue as Demo Developer (1-Click)</span>
+        </button>
 
         <div className="text-center pt-2 border-t border-dark-border text-xs text-slate-400">
           Don't have an account yet?{' '}

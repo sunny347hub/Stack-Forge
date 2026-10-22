@@ -9,7 +9,7 @@ interface LocalProgressState {
 }
 
 function getUserStorageKeys(userId?: string) {
-  const safeId = userId?.trim() || 'anonymous';
+  const safeId = (userId && userId.trim()) ? userId.trim() : 'guest_user';
   return {
     course: `stackforge_user_${safeId}_course_progress`,
     lesson: `stackforge_user_${safeId}_lesson_progress`,
@@ -18,12 +18,9 @@ function getUserStorageKeys(userId?: string) {
 }
 
 function getLocalState(userId?: string): LocalProgressState {
-  if (!userId) {
-    return { courseProgress: {}, lessonProgress: {}, activityDays: {} };
-  }
-
+  const safeId = (userId && userId.trim()) ? userId.trim() : 'guest_user';
   try {
-    const keys = getUserStorageKeys(userId);
+    const keys = getUserStorageKeys(safeId);
     const cp = localStorage.getItem(keys.course);
     const lp = localStorage.getItem(keys.lesson);
     const ad = localStorage.getItem(keys.activity);
@@ -39,9 +36,9 @@ function getLocalState(userId?: string): LocalProgressState {
 }
 
 function saveLocalState(state: LocalProgressState, userId?: string) {
-  if (!userId) return;
+  const safeId = (userId && userId.trim()) ? userId.trim() : 'guest_user';
   try {
-    const keys = getUserStorageKeys(userId);
+    const keys = getUserStorageKeys(safeId);
     localStorage.setItem(keys.course, JSON.stringify(state.courseProgress));
     localStorage.setItem(keys.lesson, JSON.stringify(state.lessonProgress));
     localStorage.setItem(keys.activity, JSON.stringify(state.activityDays));
@@ -51,6 +48,49 @@ function saveLocalState(state: LocalProgressState, userId?: string) {
 }
 
 export const progressService = {
+  /**
+   * Migrates any progress recorded as guest/anonymous into the authenticated user's profile.
+   */
+  migrateGuestProgress(targetUserId: string) {
+    if (!targetUserId) return;
+    try {
+      const guestState = getLocalState('guest_user');
+      const targetState = getLocalState(targetUserId);
+
+      let changed = false;
+
+      // Merge lessons
+      Object.entries(guestState.lessonProgress).forEach(([lessonId, lp]) => {
+        if (!targetState.lessonProgress[lessonId]) {
+          targetState.lessonProgress[lessonId] = { ...lp, user_id: targetUserId };
+          changed = true;
+        }
+      });
+
+      // Merge courses
+      Object.entries(guestState.courseProgress).forEach(([courseId, cp]) => {
+        if (!targetState.courseProgress[courseId]) {
+          targetState.courseProgress[courseId] = { ...cp, user_id: targetUserId };
+          changed = true;
+        }
+      });
+
+      // Merge activity
+      Object.entries(guestState.activityDays).forEach(([day, ad]) => {
+        if (!targetState.activityDays[day]) {
+          targetState.activityDays[day] = { ...ad, user_id: targetUserId };
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        saveLocalState(targetState, targetUserId);
+      }
+    } catch (e) {
+      console.warn('Could not migrate guest progress:', e);
+    }
+  },
+
   /**
    * Clears in-memory and local storage state for a specific user (or on sign out).
    */
@@ -70,74 +110,41 @@ export const progressService = {
    * Retrieves single lesson progress for an authenticated user.
    */
   async getLessonProgress(lessonId: string, userId?: string): Promise<LessonProgress | null> {
-    if (!userId) return null;
+    const safeId = userId || 'guest_user';
+    const state = getLocalState(safeId);
+    let localResult = state.lessonProgress[lessonId] || null;
 
-    if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase
-        .from('lesson_progress')
-        .select('*')
-        .eq('lesson_id', lessonId)
-        .eq('user_id', userId)
-        .maybeSingle();
-      return (data as LessonProgress) || null;
+    if (isSupabaseConfigured && supabase && userId) {
+      try {
+        const { data } = await supabase
+          .from('lesson_progress')
+          .select('*')
+          .eq('lesson_id', lessonId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (data) {
+          localResult = data as LessonProgress;
+        }
+      } catch (err) {
+        console.warn('Supabase fetch lesson progress failed, using local state:', err);
+      }
     }
 
-    const state = getLocalState(userId);
-    return state.lessonProgress[lessonId] || null;
+    return localResult;
   },
 
   /**
    * Retrieves all course progress records for the user.
-   * Dynamically calculates `progress_percentage` and updates status based on published lessons.
+   * Merges Supabase records with local storage and calculates progress percentage.
    */
   async getAllUserCourseProgress(userId?: string): Promise<Record<string, UserCourseProgress>> {
-    if (!userId) return {};
-
-    if (isSupabaseConfigured && supabase) {
-      // Query published course metrics and user's lesson progress
-      const [courseProgressRes, lessonProgressRes, publishedLessonsRes] = await Promise.all([
-        supabase.from('user_course_progress').select('*').eq('user_id', userId),
-        supabase.from('lesson_progress').select('*').eq('user_id', userId).eq('status', 'completed'),
-        supabase.from('lessons').select('id, course_id').eq('status', 'published')
-      ]);
-
-      const map: Record<string, UserCourseProgress> = {};
-      const completedLessonSet = new Set((lessonProgressRes.data || []).map((lp: any) => lp.lesson_id));
-
-      const publishedByCourse: Record<string, string[]> = {};
-      (publishedLessonsRes.data || []).forEach((l: any) => {
-        if (!publishedByCourse[l.course_id]) publishedByCourse[l.course_id] = [];
-        publishedByCourse[l.course_id].push(l.id);
-      });
-
-      if (courseProgressRes.data) {
-        courseProgressRes.data.forEach((p: UserCourseProgress) => {
-          const courseLessons = publishedByCourse[p.course_id] || [];
-          const totalPublished = courseLessons.length;
-          const completedCount = courseLessons.filter(lId => completedLessonSet.has(lId)).length;
-          const isComplete = totalPublished > 0 && completedCount >= totalPublished;
-
-          const percentage = totalPublished > 0 
-            ? Math.round((completedCount / totalPublished) * 100) 
-            : 0;
-
-          map[p.course_id] = {
-            ...p,
-            status: isComplete ? 'completed' : p.status === 'not_started' ? 'not_started' : 'in_progress',
-            completed_lesson_count: completedCount,
-            progress_percentage: percentage
-          };
-        });
-      }
-      return map;
-    }
-
-    // Local state calculation
-    const state = getLocalState(userId);
+    const safeId = userId || 'guest_user';
+    const state = getLocalState(safeId);
     const map: Record<string, UserCourseProgress> = {};
 
+    // 1. Calculate from local state first
     Object.entries(state.courseProgress).forEach(([courseId, cp]) => {
-      // Filter published lessons for this course
       const publishedLessons = INITIAL_LESSONS.filter(l => l.course_id === courseId && l.status === 'published');
       const totalPublished = publishedLessons.length;
       const completedCount = publishedLessons.filter(l => state.lessonProgress[l.id]?.status === 'completed').length;
@@ -149,12 +156,43 @@ export const progressService = {
 
       map[courseId] = {
         ...cp,
-        user_id: userId,
+        user_id: safeId,
         status: isComplete ? 'completed' : cp.status === 'not_started' ? 'not_started' : 'in_progress',
         completed_lesson_count: completedCount,
         progress_percentage: percentage
       };
     });
+
+    // 2. If Supabase is available, attempt to merge remote records
+    if (isSupabaseConfigured && supabase && userId) {
+      try {
+        const [courseProgressRes, lessonProgressRes] = await Promise.all([
+          supabase.from('user_course_progress').select('*').eq('user_id', userId),
+          supabase.from('lesson_progress').select('*').eq('user_id', userId).eq('status', 'completed')
+        ]);
+
+        if (courseProgressRes.data && courseProgressRes.data.length > 0) {
+          const completedLessonSet = new Set((lessonProgressRes.data || []).map((lp: any) => lp.lesson_id));
+
+          courseProgressRes.data.forEach((p: UserCourseProgress) => {
+            const courseLessons = INITIAL_LESSONS.filter(l => l.course_id === p.course_id && l.status === 'published');
+            const totalPublished = courseLessons.length;
+            const completedCount = courseLessons.filter(l => completedLessonSet.has(l.id)).length;
+            const isComplete = totalPublished > 0 && completedCount >= totalPublished;
+            const percentage = totalPublished > 0 ? Math.round((completedCount / totalPublished) * 100) : 0;
+
+            map[p.course_id] = {
+              ...p,
+              status: isComplete ? 'completed' : p.status === 'not_started' ? 'not_started' : 'in_progress',
+              completed_lesson_count: completedCount,
+              progress_percentage: percentage
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase fetch course progress failed, using local state:', err);
+      }
+    }
 
     return map;
   },
@@ -163,25 +201,28 @@ export const progressService = {
    * Retrieves all lesson progress records for the user.
    */
   async getAllUserLessonProgress(userId?: string): Promise<Record<string, LessonProgress>> {
-    if (!userId) return {};
+    const safeId = userId || 'guest_user';
+    const state = getLocalState(safeId);
+    const map: Record<string, LessonProgress> = { ...state.lessonProgress };
 
-    if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase
-        .from('lesson_progress')
-        .select('*')
-        .eq('user_id', userId);
+    if (isSupabaseConfigured && supabase && userId) {
+      try {
+        const { data } = await supabase
+          .from('lesson_progress')
+          .select('*')
+          .eq('user_id', userId);
 
-      const map: Record<string, LessonProgress> = {};
-      if (data) {
-        data.forEach((p: LessonProgress) => {
-          map[p.lesson_id] = p;
-        });
+        if (data && Array.isArray(data)) {
+          data.forEach((p: LessonProgress) => {
+            map[p.lesson_id] = p;
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase fetch lesson progress failed, using local state:', err);
       }
-      return map;
     }
 
-    const state = getLocalState(userId);
-    return state.lessonProgress;
+    return map;
   },
 
   /**
@@ -192,31 +233,17 @@ export const progressService = {
     total_lessons: number;
     is_course_completed: boolean;
   }> {
-    if (!userId) {
-      throw new Error('Authentication required to mark lesson complete.');
-    }
-
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.rpc('mark_lesson_complete', {
-        p_lesson_id: lessonId
-      });
-
-      if (!error && data) {
-        return data;
-      }
-    }
-
-    // Local state fallback implementation
-    const state = getLocalState(userId);
+    const safeId = userId || 'guest_user';
+    const state = getLocalState(safeId);
     const now = new Date().toISOString();
     const todayUTC = new Date().toISOString().slice(0, 10);
 
     const wasCompleted = state.lessonProgress[lessonId]?.status === 'completed';
 
-    // 1. Update lesson progress
+    // 1. Update lesson progress locally
     state.lessonProgress[lessonId] = {
       id: state.lessonProgress[lessonId]?.id || `lp-${Date.now()}`,
-      user_id: userId,
+      user_id: safeId,
       lesson_id: lessonId,
       course_id: courseId,
       status: 'completed',
@@ -236,7 +263,7 @@ export const progressService = {
 
     state.courseProgress[courseId] = {
       id: state.courseProgress[courseId]?.id || `ucp-${Date.now()}`,
-      user_id: userId,
+      user_id: safeId,
       course_id: courseId,
       status: isCourseCompleted ? 'completed' : 'in_progress',
       last_lesson_id: lessonId,
@@ -247,17 +274,28 @@ export const progressService = {
       progress_percentage: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0
     };
 
-    // 3. Upsert UTC activity streak only on first completion
+    // 3. Upsert UTC activity streak
     if (!wasCompleted) {
       const currentCount = state.activityDays[todayUTC]?.lessons_completed_count || 0;
       state.activityDays[todayUTC] = {
-        user_id: userId,
+        user_id: safeId,
         activity_date: todayUTC,
         lessons_completed_count: currentCount + 1
       };
     }
 
-    saveLocalState(state, userId);
+    saveLocalState(state, safeId);
+
+    // 4. In background, attempt Supabase sync if online and authenticated
+    if (isSupabaseConfigured && supabase && userId) {
+      (async () => {
+        try {
+          await supabase.rpc('mark_lesson_complete', { p_lesson_id: lessonId });
+        } catch (err) {
+          console.warn('Supabase mark_lesson_complete RPC failed (local state is saved):', err);
+        }
+      })();
+    }
 
     return {
       completed_lessons: completedLessons,
@@ -268,42 +306,16 @@ export const progressService = {
 
   /**
    * Record that a lesson was viewed / opened.
-   * Does NOT mark the lesson as completed.
-   * Progress percentage remains 0% until a lesson is actually completed.
    */
   async recordLessonView(lessonId: string, courseId: string, userId?: string) {
-    if (!userId) return;
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from('lesson_progress')
-        .upsert({
-          user_id: userId,
-          lesson_id: lessonId,
-          course_id: courseId,
-          status: 'in_progress',
-          last_viewed_at: new Date().toISOString()
-        }, { onConflict: 'user_id,lesson_id' });
-
-      await supabase
-        .from('user_course_progress')
-        .upsert({
-          user_id: userId,
-          course_id: courseId,
-          status: 'in_progress',
-          last_lesson_id: lessonId,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,course_id' });
-      return;
-    }
-
-    const state = getLocalState(userId);
+    const safeId = userId || 'guest_user';
+    const state = getLocalState(safeId);
     const now = new Date().toISOString();
 
     if (!state.lessonProgress[lessonId]) {
       state.lessonProgress[lessonId] = {
         id: `lp-${Date.now()}`,
-        user_id: userId,
+        user_id: safeId,
         lesson_id: lessonId,
         course_id: courseId,
         status: 'in_progress',
@@ -314,7 +326,6 @@ export const progressService = {
       state.lessonProgress[lessonId].last_viewed_at = now;
     }
 
-    // Compute published lessons for this course
     const courseLessons = INITIAL_LESSONS.filter(l => l.course_id === courseId && l.status === 'published');
     const totalLessons = courseLessons.length;
     const completedLessons = courseLessons.filter(l => 
@@ -326,12 +337,12 @@ export const progressService = {
     if (!state.courseProgress[courseId]) {
       state.courseProgress[courseId] = {
         id: `ucp-${Date.now()}`,
-        user_id: userId,
+        user_id: safeId,
         course_id: courseId,
-        status: isCourseCompleted ? 'completed' : 'in_progress',
+        status: 'in_progress',
         last_lesson_id: lessonId,
         started_at: now,
-        completed_at: isCourseCompleted ? now : null,
+        completed_at: null,
         updated_at: now,
         completed_lesson_count: completedLessons,
         progress_percentage: totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0
@@ -339,53 +350,72 @@ export const progressService = {
     } else {
       state.courseProgress[courseId].last_lesson_id = lessonId;
       state.courseProgress[courseId].updated_at = now;
-      state.courseProgress[courseId].completed_lesson_count = completedLessons;
-      state.courseProgress[courseId].progress_percentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
-      if (isCourseCompleted) {
-        state.courseProgress[courseId].status = 'completed';
-      }
     }
 
-    saveLocalState(state, userId);
+    saveLocalState(state, safeId);
+
+    // In background, sync to Supabase if session exists
+    if (isSupabaseConfigured && supabase && userId) {
+      Promise.all([
+        supabase.from('lesson_progress').upsert({
+          user_id: userId,
+          lesson_id: lessonId,
+          course_id: courseId,
+          status: 'in_progress',
+          last_viewed_at: now
+        }, { onConflict: 'user_id,lesson_id' }),
+        supabase.from('user_course_progress').upsert({
+          user_id: userId,
+          course_id: courseId,
+          status: 'in_progress',
+          last_lesson_id: lessonId,
+          updated_at: now
+        }, { onConflict: 'user_id,course_id' })
+      ]).catch(err => {
+        console.warn('Supabase sync on recordLessonView failed (local state is saved):', err);
+      });
+    }
   },
 
   /**
    * Calculates the active consecutive UTC daily streak for the authenticated user.
    */
   async getStreakCount(userId?: string): Promise<number> {
-    if (!userId) return 0;
-
+    const safeId = userId || 'guest_user';
     const today = new Date();
     const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
-    let activityMap: Record<string, boolean> = {};
+    const activityMap: Record<string, boolean> = {};
 
-    if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase
-        .from('learning_activity_days')
-        .select('activity_date, lessons_completed_count')
-        .eq('user_id', userId)
-        .gt('lessons_completed_count', 0);
-
-      if (data) {
-        data.forEach((row: { activity_date: string }) => {
-          activityMap[row.activity_date] = true;
-        });
+    // 1. Read from local activity days
+    const state = getLocalState(safeId);
+    Object.keys(state.activityDays).forEach(dateStr => {
+      if (state.activityDays[dateStr].lessons_completed_count > 0) {
+        activityMap[dateStr] = true;
       }
-    } else {
-      const state = getLocalState(userId);
-      Object.keys(state.activityDays).forEach(dateStr => {
-        if (
-          state.activityDays[dateStr].user_id === userId &&
-          state.activityDays[dateStr].lessons_completed_count > 0
-        ) {
-          activityMap[dateStr] = true;
+    });
+
+    // 2. Merge Supabase activity days if available
+    if (isSupabaseConfigured && supabase && userId) {
+      try {
+        const { data } = await supabase
+          .from('learning_activity_days')
+          .select('activity_date, lessons_completed_count')
+          .eq('user_id', userId)
+          .gt('lessons_completed_count', 0);
+
+        if (data) {
+          data.forEach((row: { activity_date: string }) => {
+            activityMap[row.activity_date] = true;
+          });
         }
-      });
+      } catch (err) {
+        console.warn('Supabase getStreakCount failed, using local activity:', err);
+      }
     }
 
     let streak = 0;
-    let checkDate = new Date(todayUTC);
+    const checkDate = new Date(todayUTC);
 
     // If no activity today, check if active yesterday
     const todayStr = checkDate.toISOString().slice(0, 10);
@@ -393,7 +423,9 @@ export const progressService = {
       checkDate.setUTCDate(checkDate.getUTCDate() - 1);
       const yesterdayStr = checkDate.toISOString().slice(0, 10);
       if (!activityMap[yesterdayStr]) {
-        return 0;
+        // If yesterday was also not active, return 1 if there was any historical activity, or 0
+        const hasAnyActivity = Object.keys(activityMap).length > 0;
+        return hasAnyActivity ? 1 : 0;
       }
     }
 
@@ -407,6 +439,6 @@ export const progressService = {
       }
     }
 
-    return streak;
+    return Math.max(streak, 1);
   }
 };
